@@ -1,0 +1,70 @@
+name : Nickel
+
+# A single amplifier (adjust as needed)
+AMP : &AMP
+  perAmpData : True
+  dataExtent : [1024, 1024]
+  readCorner : LL
+  rawBBox                 : [[0, 0], [1050, 1050]]
+  rawDataBBox             : [[10, 0], [1024, 1024]]
+  rawSerialPrescanBBox    : [[0, 0], [10, 1024]]
+  rawSerialOverscanBBox   : [[1034, 0], [16, 1024]]
+  rawParallelPrescanBBox  : [[0, 0], [0, 0]]
+  rawParallelOverscanBBox : [[10, 1024], [1024, 26]]
+  saturation : 65535
+  linearityType : PROPORTIONAL
+  linearityThreshold : 0
+  linearityMax : 65535
+  linearityCoeffs : [0, 65535]
+
+# A single CCD
+CCD : &CCD
+  detectorType : 0
+  refpos : [512.0, 512.0]
+  offset : [0.0, 0.0]
+  bbox : [[0, 0], [1024, 1024]]
+  pixelSize : [0.013, 0.013]  # Nickel's Apogee sensor pixel size in mm, adjust if known
+  transformDict : {
+    nativeSys : 'Pixels',
+    transforms : {}
+  }
+  transposeDetector : False
+  pitch : 0.0
+  yaw : 0.0
+  roll : 0.0
+  amplifiers:
+    A00:
+      <<: *AMP
+      hdu : 0
+      flipXY : [False, False]
+      ixy : [0, 0]
+
+# Plate scale and distortion transforms
+plateScale : 20.0  # arcsec/mm — verified for Nickel
+
+transforms : {
+  nativeSys: 'FocalPlane',
+  FieldAngle: {
+    transformType: 'radial',
+    coeffs: [0.0, 1.0, 0.0]
+  }
+}
+
+# CCD definitions
+CCDs:
+  CCD0:
+    <<: *CCD
+    id: 0
+    name: CCD0
+    serial: Nickel-1
+    physicalType: SCIENCE
+    refpos: [512.0, 512.0]
+    offset: [0.0, 0.0, 0.0]
+    amplifiers:
+      A00:
+        <<: *AMP
+        gain: 1.0
+        readNoise: 5.0
+        hdu: 0
+        ixy : [0, 0]
+        flipXY : [False, False]
