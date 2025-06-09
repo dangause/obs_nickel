@@ -3,14 +3,14 @@ name : Nickel
 # A single amplifier (adjust as needed)
 AMP : &AMP
   perAmpData : True
-  dataExtent : [1024, 1024]
+  dataExtent : [1056, 1024]
   readCorner : LL
-  rawBBox                 : [[0, 0], [1050, 1050]]
-  rawDataBBox             : [[10, 0], [1024, 1024]]
+  rawBBox                 : [[0, 0], [1055, 1023]]
+  rawDataBBox             : [[10, 0], [1025, 1023]]  # 1016 wide + 10 prescan
   rawSerialPrescanBBox    : [[0, 0], [10, 1024]]
-  rawSerialOverscanBBox   : [[1034, 0], [16, 1024]]
+  rawSerialOverscanBBox   : [[1025, 0], [31, 1024]]  # 1056 - 1025 = 31 columns
   rawParallelPrescanBBox  : [[0, 0], [0, 0]]
-  rawParallelOverscanBBox : [[10, 1024], [1024, 26]]
+  rawParallelOverscanBBox : [[10, 1024], [1015, 0]]  # assuming no vertical overscan
   saturation : 65535
   linearityType : PROPORTIONAL
   linearityThreshold : 0
@@ -20,10 +20,10 @@ AMP : &AMP
 # A single CCD
 CCD : &CCD
   detectorType : 0
-  refpos : [512.0, 512.0]
+  refpos : [528.0, 512.0]  # Adjusted center of 1056 x 1024
   offset : [0.0, 0.0]
-  bbox : [[0, 0], [1024, 1024]]
-  pixelSize : [0.013, 0.013]  # Nickel's Apogee sensor pixel size in mm, adjust if known
+  bbox : [[0, 0], [1056, 1024]]
+  pixelSize : [0.013, 0.013]  # Nickel's Apogee sensor pixel size in mm
   transformDict : {
     nativeSys : 'Pixels',
     transforms : {}
@@ -40,7 +40,7 @@ CCD : &CCD
       ixy : [0, 0]
 
 # Plate scale and distortion transforms
-plateScale : 20.0  # arcsec/mm — verified for Nickel
+plateScale : 20.0  # arcsec/mm
 
 transforms : {
   nativeSys: 'FocalPlane',
@@ -58,7 +58,7 @@ CCDs:
     name: CCD0
     serial: Nickel-1
     physicalType: SCIENCE
-    refpos: [512.0, 512.0]
+    refpos: [528.0, 512.0]
     offset: [0.0, 0.0, 0.0]
     amplifiers:
       A00:
