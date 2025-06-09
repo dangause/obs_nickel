@@ -1,0 +1,16 @@
+schema:
+  fields:
+    raColumn: RA
+    decColumn: DEC
+    idColumn: source_id
+  outputCols:
+    - id
+    - ra
+    - dec
+    - phot_g_mean_mag
+    - phot_bp_mean_mag
+    - phot_rp_mean_mag
+
+selection:
+  tract: 9813
+  patch: [38,39,40,41]

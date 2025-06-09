@@ -1,0 +1,13 @@
+description: Minimal processCcd for Nickel
+tasks:
+  characterizeImage:
+    class: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
+
+  calibrate:
+    class: lsst.pipe.tasks.calibrate.CalibrateTask
+    config:
+      doAstrometry: False  # Set True if reference catalog is available
+
+connections:
+  calibrate.inputExposure: characterizeImage.outputExposure
+  calibrate.inputPsf: characterizeImage.outputPsf

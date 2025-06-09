@@ -1,0 +1,14 @@
+description: Run basic ISR with bias and flat (no dark)
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTask
+    config:
+      doDark: false
+      doLinearize: false
+      doCrosstalk: false
+      doDefect: false
+      doFringe: false
+      doWrite: true
+
+      connections.bias: "bias"
+      connections.flat: "flat"

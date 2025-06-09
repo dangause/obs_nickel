@@ -1,0 +1,3 @@
+description: Flat pipeline using existing bias
+imports:
+  - $CP_PIPE_DIR/pipelines/_ingredients/cpFlat.yaml
