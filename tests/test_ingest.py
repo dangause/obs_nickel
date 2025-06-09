@@ -31,8 +31,8 @@ class TestNickelIngest(IngestTestBase, lsst.utils.tests.TestCase):
         super().setUp()
 
 
-    def testDefineVisits(self):
-        self.skipTest("Nickel does not define visits; skipping testDefineVisits.")
+    # def testDefineVisits(self):
+    #     self.skipTest("Nickel does not define visits; skipping testDefineVisits.")
 
 
 if __name__ == "__main__":
