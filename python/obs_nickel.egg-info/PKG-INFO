@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: obs-nickel
+Version: 0.1.0
+Summary: LSST obs package for the Nickel telescope
+Author: Dan Gause
+Requires-Dist: astro_metadata_translator>=0.11.0
+Requires-Dist: astropy

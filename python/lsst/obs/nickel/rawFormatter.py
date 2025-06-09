@@ -15,8 +15,13 @@ class NickelRawFormatter(FitsRawFormatterBase):
     filterDefinitions = NICKEL_FILTER_DEFINITIONS
 
     def getDetector(self, dataId):
-        """Map dataId->afw detector."""
-        # Use the Instrument's camera to find the detector
         from ._instrument import Nickel
         camera = Nickel().getCamera()
-        return camera[dataId["detector"]]
+        if isinstance(dataId, int):
+            detector_id = dataId
+        elif isinstance(dataId, dict):
+            detector_id = dataId["detector"]
+        else:
+            raise TypeError(f"Unexpected dataId format: {dataId}")
+        return camera[detector_id]
+

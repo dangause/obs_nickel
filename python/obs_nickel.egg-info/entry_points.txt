@@ -1,0 +1,2 @@
+[astro_metadata_translator.translators]
+Nickel = lsst.obs.nickel.translator:NickelTranslator

@@ -24,7 +24,7 @@ class Nickel(Instrument):
         return makeCamera(cameraYamlPath)
 
     def getName(self):
-        return "Nickel"
+        return "Nickel Direct Camera"
 
     def register(self, registry, update=False):
         camera = self.getCamera()
