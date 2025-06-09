@@ -1,0 +1,27 @@
+description: |
+  Single-frame processing for Nickel telescope exposures:
+    1. ISR (overscan, bias, flats, etc.)
+    2. Characterize image (PSF, background, detection)
+    3. Calibrate (astrometry and photometry)
+
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTask
+    config:
+      doOverscan: True
+      doBias: True
+      doDark: False
+      doFlat: True
+      doFringe: False
+
+  characterizeImage:
+    class: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
+    config: {}
+
+  calibrate:
+    class: lsst.pipe.tasks.calibrate.CalibrateTask
+    config:
+      doPhotoCal: True
+      doAstrometry: True
+      astrometry.matcher.maxOffsetPix: 300
+      photoCal.photoCatName: 'ps1_pv3_3pi_20170110'
