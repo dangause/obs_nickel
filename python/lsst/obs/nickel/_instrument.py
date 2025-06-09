@@ -1,10 +1,11 @@
 from lsst.obs.base._instrument import Instrument
 from lsst.obs.base.yamlCamera import makeCamera
-from lsst.obs.base import FilterDefinition, FilterDefinitionCollection
+from lsst.obs.base import FilterDefinition, FilterDefinitionCollection, DefineVisitsTask, VisitSystem
 from lsst.utils.introspection import get_full_type_name
 from .nickelFilters import NICKEL_FILTER_DEFINITIONS
 from .rawFormatter import NickelRawFormatter
 from .translator import NickelTranslator
+
 import os
 
 __all__ = ["Nickel"]
@@ -36,6 +37,7 @@ class Nickel(Instrument):
                 "class_name": get_full_type_name(type(self)),
                 "detector_max": len(camera),
                 "visit_max": 2**25,
+                "visit_system": VisitSystem.ONE_TO_ONE.value,
                 "exposure_max": 2**25,
             }, update=update)
 
@@ -58,3 +60,8 @@ class Nickel(Instrument):
 
     def getRawFormatter(self, dataId):
         return NickelRawFormatter
+
+    def getDefineVisitsTask(self):
+        """Use the default DefineVisitsTask (one exposure = one visit)."""
+        return DefineVisitsTask
+
