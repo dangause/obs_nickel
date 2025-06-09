@@ -31,15 +31,20 @@ class NickelTranslator(FitsTranslator):
     _trivial_map: dict[str, str | tuple[str, dict[str, Any]]] = {
         "exposure_time": ("EXPTIME", {"unit": u.s, "default": 0.0 * u.s}),
         "dark_time": ("EXPTIME", {"unit": u.s, "default": 0.0 * u.s}),
-        "boresight_airmass": "AIRMASS",
+        "boresight_airmass": ("AIRMASS", {"default": float("nan")}),
         "observation_id": ("OBSNUM", {"default": "0"}),
-        "observation_type": ("OBSTYPE", {"default": "object"}),
+        # "observation_type": ("OBSTYPE", {"default": "object"}), # adding to_observation_type directly to make lowercase
         "object": ("OBJECT", {"default": "UNKNOWN"}),
         "telescope": ("TELESCOP", {"default": "Nickel 1m"}),
-        # "instrument": ("INSTRUME", {"default": "Nickel"}),
-        "relative_humidity": ("HUMIDITY", {"default": 0.0}),
-        "temperature": ("TEMPDET", {"unit": u.K, "default": 273.15 * u.K}),
         "science_program": ("PROGRAM", {"default": "unknown"}),
+        "camera": ("CAMERA", {"default": "unknown"}),
+        "observer": ("OBSERVER", {"default": "unknown"}),
+        "filter_position": ("FILTRAW", {"default": -1}),
+        "gain": ("GAIN", {"default": -1}),
+        "readout_speed": ("READ-SPD", {"default": -1}),
+        "aperture_name": ("APERNAM", {"default": "unknown"}),
+        "relative_humidity": ("HUMIDITY", {"default": 0.0}),
+
     }
 
     _observing_day_offset = astropy.time.TimeDelta(12 * 3600, format="sec", scale="tai")
@@ -55,12 +60,9 @@ class NickelTranslator(FitsTranslator):
             "nickel", "nickel direct camera", "nickel 1m"
         }
 
-
     @cache_translation
     def to_instrument(self) -> str:
-        # Always return the logical instrument name
         return "Nickel"
-
 
     @cache_translation
     def to_exposure_id(self) -> int:
@@ -79,6 +81,11 @@ class NickelTranslator(FitsTranslator):
         return self.to_datetime_begin() + self.to_exposure_time()
 
     @cache_translation
+    def to_observation_type(self) -> str:
+        return str(self._header.get("OBSTYPE", "object")).strip().lower()
+
+
+    @cache_translation
     def to_physical_filter(self) -> str:
         return str(self._header.get("FILTNAM", "UNKNOWN")).strip()
 
@@ -88,7 +95,17 @@ class NickelTranslator(FitsTranslator):
 
     @cache_translation
     def to_tracking_radec(self) -> SkyCoord:
-        return tracking_from_degree_headers(self, ("RADESYS",), (("RA", "DEC"),), unit=(u.hourangle, u.deg))
+        ra = self._header.get("RA")
+        dec = self._header.get("DEC")
+        frame = self._header.get("RADESYSS", "FK5").strip()
+        if ra and dec:
+            return SkyCoord(ra, dec, unit=(u.hourangle, u.deg), frame=frame.lower())
+        raise RuntimeError("Missing RA/DEC in header")
+
+    @cache_translation
+    def to_temperature(self) -> u.Quantity:
+        temp_celsius = self._header.get("TEMPDET", -999.0)
+        return (temp_celsius + 273.15) * u.K
 
     @cache_translation
     def to_detector_num(self) -> int:
