@@ -24,7 +24,7 @@ class TestNickelIngest(IngestTestBase, lsst.utils.tests.TestCase):
         self.ingestdir = os.path.dirname(__file__)
         self.instrument = Nickel()
         self.file = os.path.join(testDataDirectory, "nickel", "raw", "d1032.fits")
-        self.dataIds = [dict(instrument="Nickel Direct Camera", exposure=1032, detector=0)]
+        self.dataIds = [dict(instrument="Nickel", exposure=1032, detector=0)]
         self.visits = None
         self.outputRun = "test_run"
         self.filterLabel = FilterLabel(band="B", physical="B")

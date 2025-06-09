@@ -18,10 +18,10 @@ _NICKEL_LOCATION = EarthLocation.from_geodetic(lat=37.3414, lon=-121.6429, heigh
 
 
 class NickelTranslator(FitsTranslator):
-    """Metadata translator for Lick Nickel telescope FITS headers."""
+    """Metadata translator for the Nickel telescope at Lick Observatory."""
 
     name = "Nickel"
-    supported_instrument = "Nickel Direct Camera"
+    supported_instrument = "Nickel"
 
     _const_map = {
         "boresight_rotation_angle": Angle(0.0 * u.deg),
@@ -36,7 +36,7 @@ class NickelTranslator(FitsTranslator):
         "observation_type": ("OBSTYPE", {"default": "object"}),
         "object": ("OBJECT", {"default": "UNKNOWN"}),
         "telescope": ("TELESCOP", {"default": "Nickel 1m"}),
-        "instrument": ("INSTRUME", {"default": "Nickel Direct Camera"}),
+        # "instrument": ("INSTRUME", {"default": "Nickel"}),
         "relative_humidity": ("HUMIDITY", {"default": 0.0}),
         "temperature": ("TEMPDET", {"unit": u.K, "default": 273.15 * u.K}),
         "science_program": ("PROGRAM", {"default": "unknown"}),
@@ -46,10 +46,20 @@ class NickelTranslator(FitsTranslator):
 
     @classmethod
     def can_translate(cls, header, filename=None):
-        val = header.get("INSTRUME", "") or header.get("CAMERA", "")
-        return "nickel" in val.lower()
-    
+        val = (
+            header.get("INSTRUME", "") or
+            header.get("CAMERA", "") or
+            header.get("TELESCOP", "")
+        )
+        return val.lower().strip() in {
+            "nickel", "nickel direct camera", "nickel 1m"
+        }
 
+
+    @cache_translation
+    def to_instrument(self) -> str:
+        # Always return the logical instrument name
+        return "Nickel"
 
 
     @cache_translation

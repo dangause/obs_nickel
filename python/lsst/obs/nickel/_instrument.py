@@ -13,6 +13,7 @@ __all__ = ["Nickel"]
 class Nickel(Instrument):
     """Instrument class for the Nickel telescope at Lick Observatory."""
 
+    name = "Nickel"
     translatorClass = NickelTranslator
 
     def __init__(self, collection_prefix=None):
@@ -23,8 +24,9 @@ class Nickel(Instrument):
         cameraYamlPath = os.path.join(os.path.dirname(__file__), "camera.yaml")
         return makeCamera(cameraYamlPath)
 
+    @classmethod
     def getName(self):
-        return "Nickel Direct Camera"
+        return "Nickel"
 
     def register(self, registry, update=False):
         camera = self.getCamera()
