@@ -5,7 +5,7 @@ from lsst.utils.introspection import get_full_type_name
 from .nickelFilters import NICKEL_FILTER_DEFINITIONS
 from .rawFormatter import NickelRawFormatter
 from .translator import NickelTranslator
-
+from lsst.utils import getPackageDir
 import os
 
 __all__ = ["Nickel"]
@@ -14,16 +14,16 @@ __all__ = ["Nickel"]
 class Nickel(Instrument):
     """Instrument class for the Nickel telescope at Lick Observatory."""
 
-    name = "Nickel"
+    # name = "Nickel"
+    filterDefinitions = NICKEL_FILTER_DEFINITIONS
     translatorClass = NickelTranslator
 
     def __init__(self, collection_prefix=None):
         super().__init__(collection_prefix=collection_prefix)
 
     def getCamera(self):
-        # Locate camera.yaml relative to this file
-        cameraYamlPath = os.path.join(os.path.dirname(__file__), "camera.yaml")
-        return makeCamera(cameraYamlPath)
+        path = os.path.join(getPackageDir("obs_nickel"), "camera", "nickel.yaml")
+        return makeCamera(path)
 
     @classmethod
     def getName(self):

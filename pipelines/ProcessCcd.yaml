@@ -1,0 +1,37 @@
+# pipelines/ProcessCcd.yaml
+description: ISR + characterize + calibrate
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTask
+    config:
+      doBias: True
+      doFlat: True
+      doDark: False
+      doDefect: False
+      doWrite: True
+
+  characterizeImage:
+    class: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
+    # config:
+    #   starSelector:
+    #     minSnr: 20.0
+    #     maxSnr: 5000.0
+    #     minRadiusPsf: 0.7
+    #     maxRadiusPsf: 10.0
+
+
+  calibrate:
+    class: lsst.pipe.tasks.calibrate.CalibrateTask
+    config:
+      doAstrometry: False
+      doPhotoCal: False
+
+subsets:
+  processCcd:
+    - isr
+    - characterizeImage
+    - calibrate
+
+steps:
+  - label: processCcd
+    sharding_dimensions: visit,detector
