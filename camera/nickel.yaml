@@ -1,56 +1,56 @@
-name : Nickel
+name: Nickel
 
-# A single amplifier (adjust as needed)
-AMP : &AMP
-  perAmpData : True
-  dataExtent : [1056, 1024]
-  readCorner : LL
-  rawBBox                 : [[0, 0], [1055, 1023]]
-  rawDataBBox             : [[10, 0], [1025, 1023]]  # 1016 wide + 10 prescan
-  rawSerialPrescanBBox    : [[0, 0], [10, 1024]]
-  rawSerialOverscanBBox   : [[1025, 0], [31, 1024]]  # 1056 - 1025 = 31 columns
-  rawParallelPrescanBBox  : [[0, 0], [0, 0]]
-  rawParallelOverscanBBox : [[10, 1024], [1015, 0]]  # assuming no vertical overscan
-  saturation : 65535
-  linearityType : PROPORTIONAL
-  linearityThreshold : 0
-  linearityMax : 65535
-  linearityCoeffs : [0, 65535]
+# --- Amplifier Template ---
+AMP: &AMP
+  perAmpData: true
+  dataExtent: [1056, 1024]            # full raw frame
+  readCorner: LL
+  rawBBox: [[0, 0], [1055, 1023]]
+  rawDataBBox: [[10, 0], [1025, 1023]]  # visible pixels
+  rawSerialPrescanBBox: [[0, 0], [10, 1023]]
+  rawSerialOverscanBBox: [[1025, 0], [30, 1024]]
+  rawParallelPrescanBBox: [[0, 0], [0, 0]]          # no parallel prescan
+  rawParallelOverscanBBox: [[10, 1024], [1025, 1024]]  # no vertical overscan, but defined
+  gain: 1.8
+  readNoise: 10.7
+  saturation: 65535
+  linearityType: PROPORTIONAL
+  linearityThreshold: 0
+  linearityMax: 65535
+  linearityCoeffs: [0.0, 1.0]
 
-# A single CCD
-CCD : &CCD
-  detectorType : 0
-  refpos : [528.0, 512.0]  # Adjusted center of 1056 x 1024
-  offset : [0.0, 0.0]
-  bbox : [[0, 0], [1056, 1024]]
-  pixelSize : [0.013, 0.013]  # Nickel's Apogee sensor pixel size in mm
-  transformDict : {
-    nativeSys : 'Pixels',
-    transforms : {}
-  }
-  transposeDetector : False
-  pitch : 0.0
-  yaw : 0.0
-  roll : 0.0
+# --- CCD Template ---
+CCD: &CCD
+  detectorType: 0                      # SCIENCE
+  refpos: [528.0, 512.0]               # center of 1056 x 1024
+  offset: [0.0, 0.0]
+  bbox: [[0, 0], [1056, 1024]]
+  pixelSize: [0.015, 0.015]            # 15 micron pixels
+  transformDict:
+    nativeSys: 'Pixels'
+    transforms: {}
+  transposeDetector: false
+  pitch: 0.0
+  yaw: 0.0
+  roll: 0.0
   amplifiers:
     A00:
       <<: *AMP
-      hdu : 0
-      flipXY : [False, False]
-      ixy : [0, 0]
+      hdu: 0
+      ixy: [0, 0]
+      flipXY: [false, false]
 
-# Plate scale and distortion transforms
-plateScale : 20.0  # arcsec/mm
+# --- Global Focal Plane Scale ---
+plateScale: 24.7   # arcsec/mm = 0.37 arcsec/pixel ÷ 0.015 mm
 
-transforms : {
-  nativeSys: 'FocalPlane',
-  FieldAngle: {
-    transformType: 'radial',
+# --- Optical Distortion Approximation ---
+transforms:
+  nativeSys: 'FocalPlane'
+  FieldAngle:
+    transformType: radial
     coeffs: [0.0, 1.0, 0.0]
-  }
-}
 
-# CCD definitions
+# --- Detector Table ---
 CCDs:
   CCD0:
     <<: *CCD
@@ -63,8 +63,8 @@ CCDs:
     amplifiers:
       A00:
         <<: *AMP
-        gain: 1.0
-        readNoise: 5.0
+        gain: 1.8
+        readNoise: 10.7
         hdu: 0
-        ixy : [0, 0]
-        flipXY : [False, False]
+        ixy: [0, 0]
+        flipXY: [false, false]

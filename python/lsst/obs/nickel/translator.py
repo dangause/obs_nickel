@@ -37,7 +37,6 @@ class NickelTranslator(FitsTranslator):
         "telescope": ("TELESCOP", {"default": "Nickel 1m"}),
         "science_program": ("PROGRAM", {"default": "unknown"}),
         "relative_humidity": ("HUMIDITY", {"default": 0.0}),
-
     }
 
     _observing_day_offset = astropy.time.TimeDelta(12 * 3600, format="sec", scale="tai")
@@ -45,8 +44,7 @@ class NickelTranslator(FitsTranslator):
     @classmethod
     def can_translate(cls, header, filename=None):
         val = header.get("INSTRUME", "").strip().lower()
-        result = "nickel" in val
-        return result
+        return "nickel" in val
 
     @cache_translation
     def to_instrument(self) -> str:
@@ -68,32 +66,54 @@ class NickelTranslator(FitsTranslator):
     def to_datetime_end(self) -> astropy.time.Time:
         return self._from_fits_date("DATE-END", scale="utc")
 
-
     @cache_translation
     def to_observation_type(self) -> str:
-        object_str = self._header.get("OBJECT", "").strip().lower()
+        """Return one of: science | flat | bias | dark | focus."""
         obstype = self._header.get("OBSTYPE", "").strip().lower()
+        obj     = self._header.get("OBJECT", "").strip().lower()
 
-        # Use OBSTYPE first if it's present
-        if obstype == "dark":
-            return "bias" if "bias" in object_str else "dark"
-        if obstype == "object":
-            if "flat" in object_str:
-                return "flat"
-            if "focus" in object_str:
-                return "focus"
-            return "science"
-
-        # Fallback heuristics
-        if "bias" in object_str:
-            return "bias"
-        if "flat" in object_str:
-            return "flat"
-        if "focus" in object_str:
+        # Diagnostics / recovery / tests
+        if "test" in obj or "post" in obj:
             return "focus"
 
+        # Dark / bias from OBSTYPE
+        if obstype == "dark":
+            return "bias" if "bias" in obj else "dark"
+
+        # Flats
+        if obstype == "flat" or "flat" in obj:
+            return "flat"
+
+        # Focus or pointing sequences
+        if any(w in obj for w in ("focus", "focusing", "point")):
+            return "focus"
+
+        # Bias frames with OBJECT="Bias"
+        if "bias" in obj:
+            return "bias"
+
+        # Default
         return "science"
 
+
+    @cache_translation
+    def to_observation_reason(self) -> str:
+        """Tag the intent behind the observation for filtering."""
+        object_str = self._header.get("OBJECT", "").strip().lower()
+
+        if "flat" in object_str:
+            return "calibration"
+        if "bias" in object_str:
+            return "calibration"
+        if "dark" in object_str:
+            return "calibration"
+        if "focus" in object_str:
+            return "focus"
+        if "test" in object_str or "post" in object_str:
+            return "test"
+        if object_str == "point":
+            return "pointing"
+        return "science"
 
     @cache_translation
     def to_physical_filter(self) -> str:
@@ -152,5 +172,3 @@ class NickelTranslator(FitsTranslator):
     @cache_translation
     def to_pressure(self):
         return None
-
-
