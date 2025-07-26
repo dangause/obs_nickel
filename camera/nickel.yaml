@@ -5,12 +5,12 @@ AMP: &AMP
   perAmpData: true
   dataExtent: [1056, 1024]            # full raw frame
   readCorner: LL
-  rawBBox: [[0, 0], [1055, 1023]]
-  rawDataBBox: [[10, 0], [1025, 1023]]  # visible pixels
-  rawSerialPrescanBBox: [[0, 0], [10, 1023]]
-  rawSerialOverscanBBox: [[1025, 0], [30, 1024]]
-  rawParallelPrescanBBox: [[0, 0], [0, 0]]          # no parallel prescan
-  rawParallelOverscanBBox: [[10, 1024], [1025, 1024]]  # no vertical overscan, but defined
+  rawBBox: [[0, 0], [1056, 1024]]
+  rawDataBBox: [[0, 0], [1025, 1024]]       # Everything left of overscan is signal
+  rawSerialPrescanBBox: [[0, 0], [0, 0]]     # No prescan
+  rawSerialOverscanBBox: [[1025, 0], [31, 1024]]  # Right-side overscan
+  rawParallelPrescanBBox: [[0, 0], [0, 0]]
+  rawParallelOverscanBBox: [[0, 0], [0, 0]]
   gain: 1.8
   readNoise: 10.7
   saturation: 65535

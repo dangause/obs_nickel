@@ -4,11 +4,15 @@ tasks:
   isr:
     class: lsst.ip.isr.IsrTask
     config:
+      doOverscan: True
       doBias: True
       doFlat: True
       doDark: False
       doDefect: False
+      doSuspect: True
       doWrite: True
+      doTrimToMatchCalib: True
+      doVignette: True
 
   characterizeImage:
     class: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
