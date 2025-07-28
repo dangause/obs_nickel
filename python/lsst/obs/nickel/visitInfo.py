@@ -1,5 +1,5 @@
 from lsst.obs.base import MakeRawVisitInfoViaObsInfo
-from .translators.nickel import NickelTranslator
+from .translator import NickelTranslator
 
 class NickelVisitInfo(MakeRawVisitInfoViaObsInfo):
     metadataTranslator = NickelTranslator

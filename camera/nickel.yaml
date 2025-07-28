@@ -9,8 +9,8 @@ AMP: &AMP
   rawDataBBox: [[0, 0], [1025, 1024]]       # Everything left of overscan is signal
   rawSerialPrescanBBox: [[0, 0], [0, 0]]     # No prescan
   rawSerialOverscanBBox: [[1025, 0], [31, 1024]]  # Right-side overscan
-  rawParallelPrescanBBox: [[0, 0], [0, 0]]
-  rawParallelOverscanBBox: [[0, 0], [0, 0]]
+  rawParallelPrescanBBox: [[0, 0], [0, 0]]    # No paralell prescan
+  rawParallelOverscanBBox: [[0, 0], [0, 0]]   # No parallel overscan
   gain: 1.8
   readNoise: 10.7
   saturation: 65535

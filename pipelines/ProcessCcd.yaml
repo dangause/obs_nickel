@@ -16,19 +16,13 @@ tasks:
 
   characterizeImage:
     class: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
-    # config:
-    #   starSelector:
-    #     minSnr: 20.0
-    #     maxSnr: 5000.0
-    #     minRadiusPsf: 0.7
-    #     maxRadiusPsf: 10.0
-
 
   calibrate:
     class: lsst.pipe.tasks.calibrate.CalibrateTask
     config:
       doAstrometry: False
       doPhotoCal: False
+
 
 subsets:
   processCcd:
