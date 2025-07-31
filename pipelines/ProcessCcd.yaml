@@ -1,5 +1,5 @@
 # pipelines/ProcessCcd.yaml
-description: ISR + characterize + calibrate
+description: ISR + Image Calibration
 tasks:
   isr:
     class: lsst.ip.isr.IsrTask
@@ -14,21 +14,33 @@ tasks:
       doTrimToMatchCalib: True
       doVignette: True
 
-  characterizeImage:
-    class: lsst.pipe.tasks.characterizeImage.CharacterizeImageTask
-
-  calibrate:
-    class: lsst.pipe.tasks.calibrate.CalibrateTask
+  calibrateImage:
+    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
     config:
-      doAstrometry: False
-      doPhotoCal: False
-
+      # connections.astrometry_ref_cat: gaia_dr3_20250728
+      connections.astrometry_ref_cat: gaia_dr3_20250728
+      # connections.photometry_ref_cat: gaia_dr3_20250728
+      connections.photometry_ref_cat: panstarrs1_dr2_20250730
+      # astrometry.maxFitRms: 10.0  # allow overall worse fits before raising BadAstrometryFit
+      # astrometry.matchDistanceSigma: 5.0
+      # astrometry.maxMeanDistanceArcsec: 20.0
+      # astrometry.maxIter: 5
+      # astrometry.doMagnitudeOutlierRejection: true
+      # psf_measure_psf.psfDeterminer: "pca"
+      # measure_aperture_correction.sourceSelector.science.signalToNoise.minimum: 10.0
+      # measure_aperture_correction.minDegreesOfFreedom: 1
+      # measure_aperture_correction.allowFailure: ["base_GaussianFlux"]
+      astrometry.maxMeanDistanceArcsec: 50.0
+      # photometry.match.refFluxField: phot_g_mean_flux
+      # astrometry_ref_loader.anyFilterMapsToThis: None
+      # astrometry_ref_loader.filterMap: {"b": "gMeanPSFMag", "v": "gMeanPSFMag", "r": "rMeanPSFMag", "i": "iMeanPSFMag", "u": "gMeanPSFMag"}
+      photometry_ref_loader.anyFilterMapsToThis: None
+      photometry_ref_loader.filterMap: {"b": "gMeanPSFMag", "v": "gMeanPSFMag", "r": "rMeanPSFMag", "i": "iMeanPSFMag", "u": "gMeanPSFMag"}
 
 subsets:
   processCcd:
     - isr
-    - characterizeImage
-    - calibrate
+    - calibrateImage
 
 steps:
   - label: processCcd
