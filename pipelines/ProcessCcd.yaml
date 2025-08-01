@@ -22,12 +22,9 @@ tasks:
   calibrateImage:
     class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
     config:
-      # connections.astrometry_ref_cat: gaia_dr3_20250728
       connections.astrometry_ref_cat: gaia_dr3_20250728
-      # connections.photometry_ref_cat: gaia_dr3_20250728
       connections.photometry_ref_cat: panstarrs1_dr2_20250730
 
-      # let the solver run—don’t skip it
       astrometry.forceKnownWcs: False
 
       # match search‐radius: 60″ ≃ 300 pix @ 0.2″/pix
