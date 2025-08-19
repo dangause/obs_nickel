@@ -50,6 +50,8 @@ pipetask run \
   -o "$CP_RUN_FLAT" \
   -p "$CP_PIPE_DIR/pipelines/_ingredients/cpFlat.yaml" \
   -c cpFlatIsr:doDark=False \
+  -c cpFlatIsr:doOverscan=True \
+  -c cpFlatIsr:doTrimToMatchCalib=True \
   -d "instrument='Nickel' AND exposure.observation_type='flat'" \
   --register-dataset-types
 
