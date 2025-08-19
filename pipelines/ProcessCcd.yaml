@@ -1,0 +1,54 @@
+# pipelines/ProcessCcd.yaml
+description: ISR + Image Calibration
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTask
+    config:
+      doOverscan: True
+      doBias: True
+      doFlat: True
+      doDark: False
+      doDefect: True
+      doFringe: False
+      doSuspect: True
+      doWrite: True
+      doTrimToMatchCalib: True
+      doVignette: True
+      fluxMag0T1:
+        B: 2e8
+        V: 2e8
+        R: 2e8
+        I: 2e8
+
+  calibrateImage:
+    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
+    config:
+      connections.astrometry_ref_cat: gaia_dr3_20250728
+      connections.photometry_ref_cat: panstarrs1_dr2_20250730
+
+      astrometry.forceKnownWcs: False
+
+      # match search‐radius: 60″ ≃ 300 pix @ 0.2″/pix
+      astrometry.matcher.maxOffsetPix: 300
+      astrometry.matcher.maxRotationDeg: 1.0
+      astrometry.matcher.matcherIterations: 12
+
+      # accept a sloppy initial fit up to 60″ mean, then refine
+      astrometry.maxMeanDistanceArcsec: 60.0
+      astrometry.matchDistanceSigma: 8.0
+      astrometry.maxIter: 12
+      
+      # astrometry_ref_loader.anyFilterMapsToThis: None
+      # astrometry_ref_loader.filterMap: {"b": "gMeanPSFMag", "v": "gMeanPSFMag", "r": "rMeanPSFMag", "i": "iMeanPSFMag", "u": "gMeanPSFMag"}
+      photometry_ref_loader.filterMap: {"b": "gMeanPSFMag", "v": "gMeanPSFMag", "r": "rMeanPSFMag", "i": "iMeanPSFMag", "u": "gMeanPSFMag"}
+      # photometry_ref_loader.filterMap: {"b": "g", "v": "g", "r": "r", "i": "i", "u": "g"}
+      photometry.match.matchRadius: 60.0
+
+subsets:
+  processCcd:
+    - isr
+    - calibrateImage
+
+steps:
+  - label: processCcd
+    sharding_dimensions: visit,detector

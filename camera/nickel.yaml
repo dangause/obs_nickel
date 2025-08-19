@@ -1,0 +1,70 @@
+name: Nickel
+
+# --- Amplifier Template ---
+AMP: &AMP
+  perAmpData: true
+  dataExtent: [1056, 1024]            # full raw frame
+  readCorner: LL
+  rawBBox: [[0, 0], [1056, 1024]]
+  rawDataBBox: [[0, 0], [1025, 1024]]       # Everything left of overscan is signal
+  rawSerialPrescanBBox: [[0, 0], [0, 0]]     # No prescan
+  rawSerialOverscanBBox: [[1025, 0], [31, 1024]]  # Right-side overscan
+  rawParallelPrescanBBox: [[0, 0], [0, 0]]    # No paralell prescan
+  rawParallelOverscanBBox: [[0, 0], [0, 0]]   # No parallel overscan
+  gain: 1.8
+  readNoise: 10.7
+  saturation: 65535
+  linearityType: PROPORTIONAL
+  linearityThreshold: 0
+  linearityMax: 65535
+  linearityCoeffs: [0.0, 1.0]
+
+# --- CCD Template ---
+CCD: &CCD
+  detectorType: 0                      # SCIENCE
+  refpos: [528.0, 512.0]               # center of 1056 x 1024
+  offset: [0.0, 0.0]
+  bbox: [[0, 0], [1056, 1024]]
+  pixelSize: [0.015, 0.015]            # 15 micron pixels
+  transformDict:
+    nativeSys: 'Pixels'
+    transforms: {}
+  transposeDetector: false
+  pitch: 0.0
+  yaw: 0.0
+  roll: 0.0
+  amplifiers:
+    A00:
+      <<: *AMP
+      hdu: 0
+      ixy: [0, 0]
+      flipXY: [false, false]
+
+# --- Global Focal Plane Scale ---
+plateScale: 24.7   # arcsec/mm = 0.37 arcsec/pixel ÷ 0.015 mm
+
+# --- Optical Distortion Approximation ---
+transforms:
+  nativeSys: 'FocalPlane'
+  FieldAngle:
+    transformType: radial
+    coeffs: [0.0, 1.0, 0.0]
+
+# --- Detector Table ---
+CCDs:
+  CCD0:
+    <<: *CCD
+    id: 0
+    name: CCD0
+    serial: Nickel-1
+    physicalType: SCIENCE
+    refpos: [528.0, 512.0]
+    offset: [0.0, 0.0, 0.0]
+    amplifiers:
+      A00:
+        <<: *AMP
+        gain: 1.8
+        readNoise: 10.7
+        hdu: 0
+        ixy: [0, 0]
+        flipXY: [false, false]

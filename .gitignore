@@ -30,3 +30,9 @@ python/*.dist-info/
 __pycache__
 data
 notebooks
+.egg
+.egg-info
+.vscode
+.virtual_documents
+logs
+pipelines/Example run script.md

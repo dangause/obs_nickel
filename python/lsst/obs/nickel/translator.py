@@ -21,7 +21,7 @@ class NickelTranslator(FitsTranslator):
     """Metadata translator for the Nickel telescope at Lick Observatory."""
 
     name = "Nickel"
-    supported_instrument = "Nickel"
+    supported_instrument = {"Nickel"}
 
     _const_map = {
         "boresight_rotation_angle": Angle(0.0 * u.deg),
@@ -33,32 +33,18 @@ class NickelTranslator(FitsTranslator):
         "dark_time": ("EXPTIME", {"unit": u.s, "default": 0.0 * u.s}),
         "boresight_airmass": ("AIRMASS", {"default": float("nan")}),
         "observation_id": ("OBSNUM", {"default": "0"}),
-        # "observation_type": ("OBSTYPE", {"default": "object"}), # adding to_observation_type directly to make lowercase
         "object": ("OBJECT", {"default": "UNKNOWN"}),
         "telescope": ("TELESCOP", {"default": "Nickel 1m"}),
         "science_program": ("PROGRAM", {"default": "unknown"}),
-        "camera": ("CAMERA", {"default": "unknown"}),
-        "observer": ("OBSERVER", {"default": "unknown"}),
-        "filter_position": ("FILTRAW", {"default": -1}),
-        "gain": ("GAIN", {"default": -1}),
-        "readout_speed": ("READ-SPD", {"default": -1}),
-        "aperture_name": ("APERNAM", {"default": "unknown"}),
         "relative_humidity": ("HUMIDITY", {"default": 0.0}),
-
     }
 
     _observing_day_offset = astropy.time.TimeDelta(12 * 3600, format="sec", scale="tai")
 
     @classmethod
     def can_translate(cls, header, filename=None):
-        val = (
-            header.get("INSTRUME", "") or
-            header.get("CAMERA", "") or
-            header.get("TELESCOP", "")
-        )
-        return val.lower().strip() in {
-            "nickel", "nickel direct camera", "nickel 1m"
-        }
+        val = header.get("INSTRUME", "").strip().lower()
+        return "nickel" in val
 
     @cache_translation
     def to_instrument(self) -> str:
@@ -74,16 +60,60 @@ class NickelTranslator(FitsTranslator):
 
     @cache_translation
     def to_datetime_begin(self) -> astropy.time.Time:
-        return self._from_fits_date("DATE", scale="utc")
+        return self._from_fits_date("DATE-BEG", scale="utc")
 
     @cache_translation
     def to_datetime_end(self) -> astropy.time.Time:
-        return self.to_datetime_begin() + self.to_exposure_time()
+        return self._from_fits_date("DATE-END", scale="utc")
 
     @cache_translation
     def to_observation_type(self) -> str:
-        return str(self._header.get("OBSTYPE", "object")).strip().lower()
+        """Return one of: science | flat | bias | dark | focus."""
+        obstype = self._header.get("OBSTYPE", "").strip().lower()
+        obj     = self._header.get("OBJECT", "").strip().lower()
 
+        # Diagnostics / recovery / tests
+        if "test" in obj or "post" in obj:
+            return "focus"
+
+        # Dark / bias from OBSTYPE
+        if obstype == "dark":
+            return "bias" if "bias" in obj else "dark"
+
+        # Flats
+        if obstype == "flat" or "flat" in obj:
+            return "flat"
+
+        # Focus or pointing sequences
+        if any(w in obj for w in ("focus", "focusing", "point")):
+            return "focus"
+
+        # Bias frames with OBJECT="Bias"
+        if "bias" in obj:
+            return "bias"
+
+        # Default
+        return "science"
+
+
+    @cache_translation
+    def to_observation_reason(self) -> str:
+        """Tag the intent behind the observation for filtering."""
+        object_str = self._header.get("OBJECT", "").strip().lower()
+
+        if "flat" in object_str:
+            return "calibration"
+        if "bias" in object_str:
+            return "calibration"
+        if "dark" in object_str:
+            return "calibration"
+        if "focus" in object_str:
+            return "focus"
+        if "test" in object_str or "post" in object_str:
+            return "test"
+        if object_str == "point":
+            return "pointing"
+        return "science"
 
     @cache_translation
     def to_physical_filter(self) -> str:
