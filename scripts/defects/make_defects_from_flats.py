@@ -1,293 +1,223 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-nickel_defects.py — derive rectangular defect masks from Nickel flats (or darks),
-visualize them, and ingest into Butler as a `defects` calib.
+Build rectangular defect masks from cpFlat outputs, optionally ingest as a Butler
+`defects` calib, and (optionally) save QA plots.
 
-Works with lsst-scipipe-9.x. Uses only matplotlib for plots.
+Designed for lsst-scipipe-9.x and obs_nickel (single detector).
 
-USAGE (CLI examples):
-  # Build defects from cpFlat run, save CSV, and ingest into a new calib run
-  python nickel_defects.py \
-    --repo /Users/you/Desktop/lick/lsst/data/nickel/062424 \
-    --collections Nickel/run/cp_flat/20250730T135912Z \
-    --detectors 0 \
-    --save-csv nickel_defects_rects.csv \
-    --register --ingest --verbose
-
-  # Visualize overlay only (from CSV, no ingest)
-  python nickel_defects.py \
-    --repo /Users/you/Desktop/lick/lsst/data/nickel/062424 \
-    --collections Nickel/run/cp_flat/20250730T135912Z \
-    --detectors 0 \
-    --csv nickel_defects_rects.csv \
-    --show
-
-In notebooks, `from nickel_defects import *` and call helpers directly.
+Usage (most common):
+  python make_defects_from_flats.py \
+    --repo ~/Desktop/lick/lsst/data/nickel/062424 \
+    --collection Nickel/run/cp_flat/20250730T135912Z \
+    --register --ingest --defects-run Nickel/calib/defects/<TS> \
+    --plot --qa-dir qa_defects
 """
 from __future__ import annotations
-
-import os
-import sys
-import math
-import argparse
-from dataclasses import dataclass
+import argparse, os, sys
 from datetime import datetime
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd
+
+import matplotlib
+matplotlib.use("Agg")  # safe in headless
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+
 from scipy.ndimage import gaussian_filter, label, find_objects, binary_opening
 
 from lsst.daf.butler import Butler, DatasetType
 from lsst.geom import Box2I, Point2I, Extent2I
 try:
-    from lsst.ip.isr import Defects  # modern stacks
-except Exception:  # pragma: no cover
-    from lsst.afw.image import Defects  # older stacks
+    from lsst.ip.isr import Defects          # newer stacks
+except ImportError:
+    from lsst.afw.image import Defects       # older stacks
 
-# ----------------------------- Utilities -----------------------------------
+# ------------------------------ helpers --------------------------------
 
-def now_ts_utc() -> str:
+def ts_utc() -> str:
     return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
-@dataclass
-class DetectConfig:
-    sigma_pix: int = 7
-    ratio_hi: float = 1.10
-    ratio_lo: float = 0.90
-    min_area_px: int = 8
-    open_struct_xy: Tuple[int, int] = (2, 2)
-    merge_columns: bool = False
-    x_tol: int = 1       # for merging
-    gap_tol: int = 4     # for merging
-
-# ----------------------------- Loading -------------------------------------
-
-def list_flat_refs(b: Butler, det: int) -> list:
+def _query_flat_refs(b: Butler, instrument: str):
+    """Return all flat refs for this instrument (no detector needed)."""
     return list(b.registry.queryDatasets(
         datasetType="flat",
-        where="instrument='Nickel' AND detector=@det",
-        bind={"det": det},
+        where=f"instrument='{instrument}'",
     ))
 
-
-def load_all_flats_median(b: Butler, det: int) -> Tuple[np.ndarray, list]:
-    refs = list_flat_refs(b, det)
+def median_flat(b: Butler, instrument: str) -> Tuple[np.ndarray, list]:
+    refs = _query_flat_refs(b, instrument)
     if not refs:
-        raise RuntimeError("No flats found. Check --collections and detector.")
+        raise RuntimeError("No flats found in the given collection(s).")
     arrs = [b.get(r).image.array.astype(np.float32) for r in refs]
     return np.median(np.stack(arrs, axis=0), axis=0), refs
 
-# ----------------------------- Detection -----------------------------------
-
-def detect_rectangles_from_flat(img: np.ndarray, cfg: DetectConfig) -> List[Tuple[int,int,int,int]]:
+def detect_rectangles_from_flat(
+    img: np.ndarray,
+    sigma_pix: int = 7,
+    ratio_hi: float = 1.10,
+    ratio_lo: float = 0.90,
+    min_area_px: int = 8,
+    open_kernel: int = 2,
+) -> List[Tuple[int,int,int,int]]:
+    """Return rectangles (x0, y0, w, h) indicating likely sensor defects."""
     img = img.astype(np.float32)
-    smooth = gaussian_filter(img, sigma=cfg.sigma_pix)
+    smooth = gaussian_filter(img, sigma=sigma_pix)
     smooth = np.maximum(smooth, 1e-6)
-    ratio = img / smooth
+    ratio  = img / smooth
 
-    mask = (ratio > cfg.ratio_hi) | (ratio < cfg.ratio_lo)
-    mask = binary_opening(mask, structure=np.ones(cfg.open_struct_xy, dtype=bool))
+    mask = (ratio > ratio_hi) | (ratio < ratio_lo)
+    if open_kernel > 0:
+        mask = binary_opening(mask, structure=np.ones((open_kernel, open_kernel), dtype=bool))
 
     labels, _ = label(mask)
     rects: List[Tuple[int,int,int,int]] = []
     for sl in find_objects(labels):
-        if sl is None: continue
-        ysl, xsl = sl
-        h = int(ysl.stop - ysl.start)
-        w = int(xsl.stop - xsl.start)
-        if w * h < cfg.min_area_px:
+        if sl is None:
             continue
-        rects.append((int(xsl.start), int(ysl.start), w, h))
-    if cfg.merge_columns and rects:
-        rects = merge_vertical_segments(rects, x_tol=cfg.x_tol, gap_tol=cfg.gap_tol)
+        ys, xs = sl
+        h = int(ys.stop - ys.start)
+        w = int(xs.stop - xs.start)
+        if w * h < min_area_px:
+            continue
+        rects.append((int(xs.start), int(ys.start), w, h))
     return rects
 
-
-def merge_vertical_segments(rects: Sequence[Tuple[int,int,int,int]], x_tol: int = 1, gap_tol: int = 4) -> List[Tuple[int,int,int,int]]:
-    """Merge vertically adjacent rectangles that share nearly the same x-span.
-    rect = (x0, y0, w, h)
-    """
-    rects = sorted(rects, key=lambda r: (r[0], r[1]))
-    merged: List[Tuple[int,int,int,int]] = []
-    for x0, y0, w, h in rects:
-        if merged:
-            px, py, pw, ph = merged[-1]
-            same_left  = abs(x0 - px) <= x_tol
-            same_right = abs((x0 + w) - (px + pw)) <= x_tol
-            touching   = y0 <= py + ph + gap_tol
-            if same_left and same_right and touching:
-                # extend previous
-                new_y0 = min(py, y0)
-                new_h  = max(py + ph, y0 + h) - new_y0
-                merged[-1] = (px, new_y0, pw, new_h)
-                continue
-        merged.append((x0, y0, w, h))
-    return merged
-
-# ----------------------------- Converters ----------------------------------
-
-def rects_to_boxes(rects: Iterable[Tuple[int,int,int,int]]) -> List[Box2I]:
-    out = []
-    for x0, y0, w, h in rects:
-        out.append(Box2I(Point2I(int(x0), int(y0)), Extent2I(int(w), int(h))))
-    return out
-
-
-def defects_to_boxes(defs_obj) -> List[Box2I]:
-    """Normalize various Defects flavors to a list of Box2I."""
-    if hasattr(defs_obj, "getBBoxList"):
-        return list(defs_obj.getBBoxList())
-    boxes = []
-    try:
-        for d in defs_obj:
-            if hasattr(d, "getBBox"):
-                boxes.append(d.getBBox())
-            elif hasattr(d, "bbox"):
-                boxes.append(d.bbox)
-    except TypeError:
-        pass
-    if not boxes and hasattr(defs_obj, "getDefects"):
-        for d in defs_obj.getDefects():
-            if hasattr(d, "getBBox"):
-                boxes.append(d.getBBox())
-            elif hasattr(d, "bbox"):
-                boxes.append(d.bbox)
-    if not boxes:
-        raise RuntimeError("Could not extract bboxes from Defects object.")
+def rectangles_to_boxes(rects: Iterable[Tuple[int,int,int,int]]) -> List[Box2I]:
+    boxes: List[Box2I] = []
+    for x0,y0,w,h in rects:
+        boxes.append(Box2I(Point2I(int(x0), int(y0)), Extent2I(int(w), int(h))))
     return boxes
 
-# ----------------------------- Butler ops ----------------------------------
+def masked_fraction(shape: Tuple[int,int], rects: Iterable[Tuple[int,int,int,int]]) -> float:
+    mask = np.zeros(shape, dtype=bool)
+    for x0,y0,w,h in rects:
+        mask[y0:y0+h, x0:x0+w] = True
+    return float(mask.mean())
 
-def ensure_defects_dataset_type(b: Butler, verbose: bool = True) -> None:
+def ensure_defects_dataset_type(b):
+    from lsst.daf.butler import DatasetType
     dims = b.registry.dimensions.conform({"instrument", "detector"})
     try:
-        b.registry.getDatasetType("defects")
-        if verbose:
-            print("Dataset type 'defects' already exists.")
+        dt = b.registry.getDatasetType("defects")
+        if not getattr(dt, "isCalibration", False):
+            raise RuntimeError(
+                "Existing dataset type 'defects' is not marked as calibration. "
+                "Please create a fresh repo (or a new path) and re-run."
+            )
     except Exception:
-        dt = DatasetType("defects", dims, "Defects")
-        b.registry.registerDatasetType(dt)
-        if verbose:
-            print("Registered dataset type 'defects'.")
+        b.registry.registerDatasetType(DatasetType("defects", dims, "Defects", isCalibration=True))
 
 
-def ingest_defects(b_repo_path: str, run: str, instrument: str, detector: int, boxes: List[Box2I]) -> None:
-    b_write = Butler(b_repo_path, run=run)
-    ensure_defects_dataset_type(Butler(b_repo_path, writeable=True), verbose=False)
-    defects_obj = Defects(boxes)
-    b_write.put(defects_obj, "defects", dataId=dict(instrument=instrument, detector=int(detector)))
-
-# ----------------------------- Plotting ------------------------------------
-
-def plot_overlay(image: np.ndarray, boxes: Sequence[Box2I], title: str = "Flat + defects") -> None:
+def save_overlay_png(img: np.ndarray, rects: List[Tuple[int,int,int,int]], title: str, out_png: str):
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.imshow(image, origin="lower")
-    for box in boxes:
-        rect = patches.Rectangle((box.getMinX(), box.getMinY()), box.getWidth(), box.getHeight(),
-                                 fill=False, linewidth=0.9)
-        ax.add_patch(rect)
+    ax.imshow(img, origin="lower")
+    for x0,y0,w,h in rects:
+        ax.add_patch(patches.Rectangle((x0, y0), w, h, fill=False, linewidth=0.8))
     ax.set_title(title)
     ax.set_xticks([]); ax.set_yticks([])
-    plt.show()
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=120)
+    plt.close(fig)
 
-# ----------------------------- CLI -----------------------------------------
+def save_mask_png(img: np.ndarray, rects: List[Tuple[int,int,int,int]], out_png: str):
+    mask = np.zeros_like(img, dtype=bool)
+    for x0,y0,w,h in rects:
+        mask[y0:y0+h, x0:x0+w] = True
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.imshow(mask, origin="lower")
+    ax.set_title("Defect mask (True=masked)")
+    ax.set_xticks([]); ax.set_yticks([])
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=120)
+    plt.close(fig)
 
-def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Build and ingest Nickel defects from flats.")
-    p.add_argument("--repo", required=True, help="Butler repo path")
-    p.add_argument("--collections", required=True, help="Comma-separated collections to read flats from (e.g. Nickel/run/cp_flat/...) ")
-    p.add_argument("--detectors", required=True, nargs="+", type=int, help="Detector id(s), e.g. 0")
-    p.add_argument("--save-csv", dest="save_csv", default=None, help="Write rectangles CSV here")
-    p.add_argument("--csv", dest="csv", default=None, help="Load rectangles from CSV instead of detecting")
-    p.add_argument("--defects-run", dest="defects_run", default=None, help="Calib run to write, default Nickel/calib/defects/<UTC>")
-    p.add_argument("--register", action="store_true", help="Ensure dataset type 'defects' exists")
-    p.add_argument("--ingest", action="store_true", help="Ingest defects into Butler")
-    p.add_argument("--show", action="store_true", help="Show overlay for first detector")
-    p.add_argument("--merge", action="store_true", help="Merge vertical segments of columns")
-    p.add_argument("--sigma", type=int, default=7)
-    p.add_argument("--ratio-hi", type=float, default=1.10)
-    p.add_argument("--ratio-lo", type=float, default=0.90)
-    p.add_argument("--min-area", type=int, default=8)
-    p.add_argument("--open-xy", type=int, nargs=2, default=(2,2))
-    p.add_argument("--verbose", action="store_true")
-    return p.parse_args(argv)
+# ------------------------------- CLI -----------------------------------
 
+def main():
+    ap = argparse.ArgumentParser(description="Create and (optionally) ingest Nickel defects from flats.")
+    ap.add_argument("--repo", required=True, help="Butler repo path")
+    ap.add_argument("--collection", required=True, help="Collection(s) with flats (e.g. Nickel/run/cp_flat/...)")
+    ap.add_argument("--instrument", default="Nickel")
+    ap.add_argument("--sigma", type=int, default=7, help="Gaussian sigma (pixels) for smoothing")
+    ap.add_argument("--ratio-hi", type=float, default=1.10, dest="ratio_hi", help="Upper ratio threshold")
+    ap.add_argument("--ratio-lo", type=float, default=0.90, dest="ratio_lo", help="Lower ratio threshold")
+    ap.add_argument("--min-area", type=int, default=8, dest="min_area", help="Minimum rectangle area (pixels)")
+    ap.add_argument("--open", type=int, default=2, dest="open_kernel", help="Morphological opening kernel (square side)")
+    ap.add_argument("--csv-out", default=None, help="Path to write rectangles CSV (default: nickel_defects_rects_<TS>.csv)")
+    ap.add_argument("--ingest", action="store_true", help="Ingest defects to Butler after creating CSV")
+    ap.add_argument("--register", action="store_true", help="Register dataset type 'defects' if missing")
+    ap.add_argument("--defects-run", default=None, help="Run name for ingest (default: Nickel/calib/defects/<TS>)")
+    ap.add_argument("--plot", action="store_true", help="Write PNG overlays/masks to --qa-dir")
+    ap.add_argument("--qa-dir", default="qa_defects", help="Directory for QA PNGs (default: qa_defects)")
+    args = ap.parse_args()
 
-def main(argv: Sequence[str] | None = None) -> int:
-    ns = parse_args(sys.argv[1:] if argv is None else argv)
-    repo = os.path.expanduser(ns.repo)
-    collections = [c.strip() for c in ns.collections.split(",") if c.strip()]
-    dets = list(ns.detectors)
-    defects_run = ns.defects_run or f"Nickel/calib/defects/{now_ts_utc()}"
+    repo = os.path.expanduser(args.repo)
+    b_flat = Butler(repo, collections=args.collection)
 
-    cfg = DetectConfig(
-        sigma_pix=ns.sigma,
-        ratio_hi=ns.ratio_hi,
-        ratio_lo=ns.ratio_lo,
-        min_area_px=ns.min_area,
-        open_struct_xy=tuple(ns.open_xy),
-        merge_columns=ns.merge,
+    # Build median flat (no detector arg used)
+    print(f"Building median flat from {args.collection} ...")
+    med, refs = median_flat(b_flat, args.instrument)
+    print(f"Using {len(refs)} flat(s)")
+
+    # Detect rectangles
+    rects = detect_rectangles_from_flat(
+        med,
+        sigma_pix=args.sigma,
+        ratio_hi=args.ratio_hi,
+        ratio_lo=args.ratio_lo,
+        min_area_px=args.min_area,
+        open_kernel=args.open_kernel,
     )
+    frac = masked_fraction(med.shape, rects)
+    print(f"Found {len(rects)} rectangles; masked fraction ≈ {frac:.3%}")
 
-    if ns.register:
-        ensure_defects_dataset_type(Butler(repo, writeable=True))
+    # Save CSV (no detector column)
+    ts = ts_utc()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_csv = os.path.join(script_dir, f"nickel_defects_rects_{ts}.csv")
+    csv_out = os.path.expanduser(args.csv_out) if args.csv_out else default_csv
 
-    # One Butler for reading flats (can handle multiple collections via chaining semantics)
-    b_read = Butler(repo, collections=collections if len(collections) > 1 else collections[0])
+    pd.DataFrame(
+        [dict(x0=x0, y0=y0, width=w, height=h, label="auto-flat") for (x0,y0,w,h) in rects],
+        columns=["x0","y0","width","height","label"],
+    ).to_csv(csv_out, index=False)
+    print(f"Wrote rectangles -> {csv_out}")
 
-    all_rects = {}
-    for det in dets:
-        if ns.csv:
-            df = pd.read_csv(ns.csv)
-            rows = df[df["detector"] == det]
-            rects = [(int(r.x0), int(r.y0), int(r.width), int(r.height)) for _, r in rows.iterrows()]
-            if ns.verbose:
-                print(f"[det {det}] loaded {len(rects)} rectangles from {ns.csv}")
-        else:
-            medflat, refs = load_all_flats_median(b_read, det)
-            if ns.verbose:
-                print(f"[det {det}] median of {len(refs)} flats (collections={collections})")
-            rects = detect_rectangles_from_flat(medflat, cfg)
-            if ns.verbose:
-                print(f"[det {det}] detected {len(rects)} rectangles (sigma={cfg.sigma_pix}, ratio=[{cfg.ratio_lo},{cfg.ratio_hi}], min_area={cfg.min_area_px})")
-            if ns.show:
-                mask = np.zeros_like(medflat, dtype=bool)
-                for (x0,y0,w,h) in rects:
-                    mask[y0:y0+h, x0:x0+w] = True
-                print(f"[det {det}] masked fraction ≈ {mask.mean():.3%}")
-                boxes = rects_to_boxes(rects)
-                try:
-                    pf = next(iter(refs)).dataId.get("physical_filter", "?")
-                except StopIteration:
-                    pf = "?"
-                plot_overlay(medflat, boxes, title=f"Median flat + defects (det={det}, filter={pf})")
 
-        all_rects[det] = rects
+    # Optional QA
+    if args.plot:
+        os.makedirs(args.qa_dir, exist_ok=True)
+        overlay_png = os.path.join(args.qa_dir, "overlay.png")
+        mask_png    = os.path.join(args.qa_dir, "mask.png")
+        save_overlay_png(med, rects, "Median flat + defects", overlay_png)
+        save_mask_png(med, rects, mask_png)
+        print(f"QA images: {overlay_png}, {mask_png}")
 
-    # Save CSV if requested
-    if ns.save_csv:
-        rows = []
-        for det, rects in all_rects.items():
-            for (x0,y0,w,h) in rects:
-                rows.append(dict(detector=det, x0=x0, y0=y0, width=w, height=h, label="auto-flat"))
-        pd.DataFrame(rows, columns=["detector","x0","y0","width","height","label"]).to_csv(ns.save_csv, index=False)
-        if ns.verbose:
-            print(f"Wrote CSV: {ns.save_csv}")
+    # Optional ingest
+    if args.ingest:
+        defects_run = args.defects_run or f"Nickel/calib/defects/{ts}"
+        print(f"Ingesting defects to run: {defects_run}")
+        b_write = Butler(repo, run=defects_run)
+        if args.register:
+            ensure_defects_dataset_type(b_write)
 
-    # Ingest if requested (one dataset per detector)
-    if ns.ingest:
-        for det, rects in all_rects.items():
-            boxes = rects_to_boxes(rects)
-            ingest_defects(repo, defects_run, "Nickel", det, boxes)
-            if ns.verbose:
-                print(f"[det {det}] put defects into run {defects_run}")
-        print(f"DEFECTS_RUN={defects_run}")
+        # Derive the (single) detector id from any flat ref (no CLI 'det' anywhere)
+        try:
+            det_id = int(refs[0].dataId["detector"])
+        except Exception as e:
+            raise RuntimeError("Could not determine detector ID from flats; "
+                               "ensure flats exist in the given collection.") from e
+
+        boxes = rectangles_to_boxes(rects)
+        defects_obj = Defects(boxes)
+        dataId = dict(instrument=args.instrument, detector=det_id)
+        b_write.put(defects_obj, "defects", dataId=dataId)
+        print("Done.")
+        print("DEFECTS_RUN =", defects_run)
 
     return 0
 
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

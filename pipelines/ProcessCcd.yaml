@@ -8,7 +8,8 @@ tasks:
       doBias: True
       doFlat: True
       doDark: False
-      doDefect: False
+      doDefect: True
+      doFringe: False
       doSuspect: True
       doWrite: True
       doTrimToMatchCalib: True
