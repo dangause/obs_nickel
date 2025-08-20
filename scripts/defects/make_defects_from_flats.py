@@ -10,12 +10,14 @@ Usage (most common):
     --repo ~/Desktop/lick/lsst/data/nickel/062424 \
     --collection Nickel/run/cp_flat/20250730T135912Z \
     --register --ingest --defects-run Nickel/calib/defects/<TS> \
-    --plot --qa-dir qa_defects
+    --plot --qa-dir qa_defects \
+    --box '[[253,0],[8,1024]]' --box '200,0,10,240' \
+    --boxes-csv manual_boxes.csv --exclude-manual
 """
 from __future__ import annotations
-import argparse, os, sys
+import argparse, os, sys, json
 from datetime import datetime
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -29,10 +31,7 @@ from scipy.ndimage import gaussian_filter, label, find_objects, binary_opening
 
 from lsst.daf.butler import Butler, DatasetType
 from lsst.geom import Box2I, Point2I, Extent2I
-try:
-    from lsst.ip.isr import Defects          # newer stacks
-except ImportError:
-    from lsst.afw.image import Defects       # older stacks
+from lsst.ip.isr import Defects          # newer stacks
 
 # ------------------------------ helpers --------------------------------
 
@@ -60,14 +59,22 @@ def detect_rectangles_from_flat(
     ratio_lo: float = 0.90,
     min_area_px: int = 8,
     open_kernel: int = 2,
+    exclude_mask: Optional[np.ndarray] = None,
 ) -> List[Tuple[int,int,int,int]]:
-    """Return rectangles (x0, y0, w, h) indicating likely sensor defects."""
+    """
+    Return rectangles (x0, y0, w, h) indicating likely sensor defects.
+    If exclude_mask is provided (bool 2D same shape as img), those pixels are ignored.
+    """
     img = img.astype(np.float32)
     smooth = gaussian_filter(img, sigma=sigma_pix)
     smooth = np.maximum(smooth, 1e-6)
     ratio  = img / smooth
 
     mask = (ratio > ratio_hi) | (ratio < ratio_lo)
+    if exclude_mask is not None:
+        if exclude_mask.shape != mask.shape:
+            raise ValueError("exclude_mask shape mismatch with image.")
+        mask[exclude_mask] = False
     if open_kernel > 0:
         mask = binary_opening(mask, structure=np.ones((open_kernel, open_kernel), dtype=bool))
 
@@ -90,11 +97,15 @@ def rectangles_to_boxes(rects: Iterable[Tuple[int,int,int,int]]) -> List[Box2I]:
         boxes.append(Box2I(Point2I(int(x0), int(y0)), Extent2I(int(w), int(h))))
     return boxes
 
-def masked_fraction(shape: Tuple[int,int], rects: Iterable[Tuple[int,int,int,int]]) -> float:
+def rectangles_to_mask(shape: Tuple[int,int], rects: Iterable[Tuple[int,int,int,int]]) -> np.ndarray:
     mask = np.zeros(shape, dtype=bool)
     for x0,y0,w,h in rects:
-        mask[y0:y0+h, x0:x0+w] = True
-    return float(mask.mean())
+        x1, y1 = min(shape[1], x0+w), min(shape[0], y0+h)
+        mask[y0:y1, x0:x1] = True
+    return mask
+
+def masked_fraction(shape: Tuple[int,int], rects: Iterable[Tuple[int,int,int,int]]) -> float:
+    return float(rectangles_to_mask(shape, rects).mean())
 
 def ensure_defects_dataset_type(b):
     from lsst.daf.butler import DatasetType
@@ -109,29 +120,88 @@ def ensure_defects_dataset_type(b):
     except Exception:
         b.registry.registerDatasetType(DatasetType("defects", dims, "Defects", isCalibration=True))
 
-
-def save_overlay_png(img: np.ndarray, rects: List[Tuple[int,int,int,int]], title: str, out_png: str):
+def save_overlay_png(img: np.ndarray,
+                     rects_auto: List[Tuple[int,int,int,int]],
+                     rects_manual: List[Tuple[int,int,int,int]],
+                     title: str, out_png: str):
+    # show auto in red, manual in cyan
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.imshow(img, origin="lower")
-    for x0,y0,w,h in rects:
-        ax.add_patch(patches.Rectangle((x0, y0), w, h, fill=False, linewidth=0.8))
-    ax.set_title(title)
+    vmin, vmax = np.nanpercentile(img, [0.5, 99.5])
+    ax.imshow(img, origin="lower", cmap="gray", vmin=vmin, vmax=vmax)
+    for x0,y0,w,h in rects_auto:
+        ax.add_patch(patches.Rectangle((x0, y0), w, h, fill=False, linewidth=0.9, edgecolor="red"))
+    for x0,y0,w,h in rects_manual:
+        ax.add_patch(patches.Rectangle((x0, y0), w, h, fill=False, linewidth=1.1, edgecolor="cyan"))
+    ax.set_title(title + "  (red=auto, cyan=manual)")
     ax.set_xticks([]); ax.set_yticks([])
     fig.tight_layout()
     fig.savefig(out_png, dpi=120)
     plt.close(fig)
 
-def save_mask_png(img: np.ndarray, rects: List[Tuple[int,int,int,int]], out_png: str):
-    mask = np.zeros_like(img, dtype=bool)
-    for x0,y0,w,h in rects:
-        mask[y0:y0+h, x0:x0+w] = True
+def save_mask_png(img: np.ndarray,
+                  rects_all: List[Tuple[int,int,int,int]],
+                  out_png: str):
+    mask = rectangles_to_mask(img.shape, rects_all)
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.imshow(mask, origin="lower")
+    ax.imshow(mask, origin="lower", cmap="gray")
     ax.set_title("Defect mask (True=masked)")
     ax.set_xticks([]); ax.set_yticks([])
     fig.tight_layout()
     fig.savefig(out_png, dpi=120)
     plt.close(fig)
+
+# -------------------- manual bbox parsing (LL + WH) --------------------
+
+def _parse_llwh_token(tok: str) -> Tuple[int,int,int,int]:
+    """
+    Accept 'llx,lly,w,h' OR JSON-like '[[llx,lly],[w,h]]'.
+    Returns (x0,y0,w,h) as ints.
+    """
+    t = tok.strip()
+    # Try JSON first
+    if t.startswith("["):
+        try:
+            arr = json.loads(t)
+            (x0, y0), (w, h) = arr
+            return int(x0), int(y0), int(w), int(h)
+        except Exception:
+            pass
+    # Fallback: csv "x,y,w,h"
+    parts = [p for p in t.replace(" ", "").split(",") if p]
+    if len(parts) != 4:
+        raise ValueError(f"Could not parse bbox token: {tok}")
+    x0, y0, w, h = map(int, parts)
+    return x0, y0, w, h
+
+def load_manual_rects(args, img_shape: Tuple[int,int]) -> List[Tuple[int,int,int,int]]:
+    rects: List[Tuple[int,int,int,int]] = []
+
+    # From repeated --box flags
+    if args.box:
+        for tok in args.box:
+            x0, y0, w, h = _parse_llwh_token(tok)
+            # clip to image bounds, ignore degenerate
+            x0 = max(0, min(img_shape[1]-1, x0))
+            y0 = max(0, min(img_shape[0]-1, y0))
+            w = max(1, min(img_shape[1]-x0, w))
+            h = max(1, min(img_shape[0]-y0, h))
+            rects.append((x0, y0, w, h))
+
+    # From CSV
+    if args.boxes_csv:
+        df = pd.read_csv(os.path.expanduser(args.boxes_csv))
+        required = {"x0","y0","width","height"}
+        if not required.issubset(df.columns):
+            raise ValueError(f"--boxes-csv must contain columns {required}")
+        for _, r in df.iterrows():
+            x0, y0, w, h = int(r["x0"]), int(r["y0"]), int(r["width"]), int(r["height"])
+            x0 = max(0, min(img_shape[1]-1, x0))
+            y0 = max(0, min(img_shape[0]-1, y0))
+            w = max(1, min(img_shape[1]-x0, w))
+            h = max(1, min(img_shape[0]-y0, h))
+            rects.append((x0, y0, w, h))
+
+    return rects
 
 # ------------------------------- CLI -----------------------------------
 
@@ -145,6 +215,15 @@ def main():
     ap.add_argument("--ratio-lo", type=float, default=0.90, dest="ratio_lo", help="Lower ratio threshold")
     ap.add_argument("--min-area", type=int, default=8, dest="min_area", help="Minimum rectangle area (pixels)")
     ap.add_argument("--open", type=int, default=2, dest="open_kernel", help="Morphological opening kernel (square side)")
+
+    # --- NEW: manual boxes
+    ap.add_argument("--box", action="append", default=None,
+                    help="Manual bbox in 'llx,lly,w,h' or JSON '[[llx,lly],[w,h]]'. Repeatable.")
+    ap.add_argument("--boxes-csv", default=None,
+                    help="CSV with columns: x0,y0,width,height (manual boxes).")
+    ap.add_argument("--exclude-manual", action="store_true",
+                    help="Do NOT auto-detect inside manual boxes (run auto on everything else).")
+
     ap.add_argument("--csv-out", default=None, help="Path to write rectangles CSV (default: nickel_defects_rects_<TS>.csv)")
     ap.add_argument("--ingest", action="store_true", help="Ingest defects to Butler after creating CSV")
     ap.add_argument("--register", action="store_true", help="Register dataset type 'defects' if missing")
@@ -161,17 +240,31 @@ def main():
     med, refs = median_flat(b_flat, args.instrument)
     print(f"Using {len(refs)} flat(s)")
 
-    # Detect rectangles
-    rects = detect_rectangles_from_flat(
+    # Manual rects (if any)
+    manual_rects: List[Tuple[int,int,int,int]] = load_manual_rects(args, med.shape)
+    if manual_rects:
+        print(f"Loaded {len(manual_rects)} manual bbox(es).")
+
+    manual_mask = rectangles_to_mask(med.shape, manual_rects) if manual_rects else None
+
+    # Detect rectangles (optionally exclude manual regions)
+    rects_auto = detect_rectangles_from_flat(
         med,
         sigma_pix=args.sigma,
         ratio_hi=args.ratio_hi,
         ratio_lo=args.ratio_lo,
         min_area_px=args.min_area,
         open_kernel=args.open_kernel,
+        exclude_mask=manual_mask if args.exclude_manual else None,
     )
-    frac = masked_fraction(med.shape, rects)
-    print(f"Found {len(rects)} rectangles; masked fraction ≈ {frac:.3%}")
+
+    # Combine: manual + auto
+    rects_all = list(rects_auto) + list(manual_rects)
+    frac_auto = masked_fraction(med.shape, rects_auto) if rects_auto else 0.0
+    frac_all  = masked_fraction(med.shape, rects_all) if rects_all else 0.0
+    print(f"Auto-detected {len(rects_auto)} rectangles; masked fraction ≈ {frac_auto:.3%}")
+    if manual_rects:
+        print(f"With manual boxes, total rectangles {len(rects_all)}; masked fraction ≈ {frac_all:.3%}")
 
     # Save CSV (no detector column)
     ts = ts_utc()
@@ -179,20 +272,18 @@ def main():
     default_csv = os.path.join(script_dir, f"nickel_defects_rects_{ts}.csv")
     csv_out = os.path.expanduser(args.csv_out) if args.csv_out else default_csv
 
-    pd.DataFrame(
-        [dict(x0=x0, y0=y0, width=w, height=h, label="auto-flat") for (x0,y0,w,h) in rects],
-        columns=["x0","y0","width","height","label"],
-    ).to_csv(csv_out, index=False)
+    rows = [dict(x0=x0, y0=y0, width=w, height=h, label="auto-flat") for (x0,y0,w,h) in rects_auto]
+    rows += [dict(x0=x0, y0=y0, width=w, height=h, label="manual") for (x0,y0,w,h) in manual_rects]
+    pd.DataFrame(rows, columns=["x0","y0","width","height","label"]).to_csv(csv_out, index=False)
     print(f"Wrote rectangles -> {csv_out}")
-
 
     # Optional QA
     if args.plot:
         os.makedirs(args.qa_dir, exist_ok=True)
         overlay_png = os.path.join(args.qa_dir, "overlay.png")
         mask_png    = os.path.join(args.qa_dir, "mask.png")
-        save_overlay_png(med, rects, "Median flat + defects", overlay_png)
-        save_mask_png(med, rects, mask_png)
+        save_overlay_png(med, rects_auto, manual_rects, "Median flat + defects", overlay_png)
+        save_mask_png(med, rects_all, mask_png)
         print(f"QA images: {overlay_png}, {mask_png}")
 
     # Optional ingest
@@ -210,7 +301,7 @@ def main():
             raise RuntimeError("Could not determine detector ID from flats; "
                                "ensure flats exist in the given collection.") from e
 
-        boxes = rectangles_to_boxes(rects)
+        boxes = rectangles_to_boxes(rects_all)
         defects_obj = Defects(boxes)
         dataId = dict(instrument=args.instrument, detector=det_id)
         b_write.put(defects_obj, "defects", dataId=dataId)
