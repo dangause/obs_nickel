@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# bad exposures from your log:
+# bad exposures - exclude:
 BAD="1032,1033,1043,1046,1047,1048,1049,1050,1051,1052,1056"
 
 ########## ABSOLUTE PATHS (edit if needed) ##########
@@ -80,7 +80,7 @@ butler collection-chain "$REPO" "$CALIB_CHAIN" \
   "$CURATED" "$CP_RUN_BIAS" "$CP_RUN_FLAT" Nickel/calib/defects/current \
   --mode redefine
 
-########## REFCATS (run from your refcat repo; original commands) ##########
+########## REFCATS (run from refcat repo; original commands) ##########
 cd "$REFCAT_REPO"
 
 # Gaia DR3
