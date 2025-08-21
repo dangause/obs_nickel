@@ -1,3 +1,4 @@
+# python/lsst/obs/nickel/translator.py
 from __future__ import annotations
 
 __all__ = ("NickelTranslator",)
@@ -9,12 +10,14 @@ import astropy.units as u
 import astropy.time
 from astropy.coordinates import Angle, EarthLocation, SkyCoord
 from astro_metadata_translator.translators.fits import FitsTranslator
-from astro_metadata_translator.translators.helpers import tracking_from_degree_headers
 from astro_metadata_translator.translator import cache_translation
 
 log = logging.getLogger(__name__)
 
-_NICKEL_LOCATION = EarthLocation.from_geodetic(lat=37.3414, lon=-121.6429, height=1293 * u.m)
+# Lick Nickel approx. location
+_NICKEL_LOCATION = EarthLocation.from_geodetic(
+    lat=37.3414, lon=-121.6429, height=1293 * u.m
+)
 
 
 class NickelTranslator(FitsTranslator):
@@ -39,6 +42,7 @@ class NickelTranslator(FitsTranslator):
         "relative_humidity": ("HUMIDITY", {"default": 0.0}),
     }
 
+    # observing day boundary (no test cares, but fine to keep)
     _observing_day_offset = astropy.time.TimeDelta(12 * 3600, format="sec", scale="tai")
 
     @classmethod
@@ -59,53 +63,62 @@ class NickelTranslator(FitsTranslator):
         return self.to_exposure_id()
 
     @cache_translation
-    def to_datetime_begin(self) -> astropy.time.Time:
-        return self._from_fits_date("DATE-BEG", scale="utc")
+    def to_datetime_begin(self):
+        """Use DATE-BEG if present; otherwise fall back to DATE-OBS."""
+        t = self._from_fits_date("DATE-BEG", scale="utc")
+        if t is not None:
+            return t
+        return self._from_fits_date("DATE-OBS", scale="utc")
+
 
     @cache_translation
-    def to_datetime_end(self) -> astropy.time.Time:
-        return self._from_fits_date("DATE-END", scale="utc")
+    def to_datetime_end(self):
+        """Prefer DATE-END; if missing or earlier than begin, use begin + EXPTIME.
+
+        This also handles EXPTIME==0 (bias) by returning 'begin'.
+        """
+        begin = self.to_datetime_begin()
+
+        end = self._from_fits_date("DATE-END", scale="utc")
+        if end is None or (begin is not None and end < begin):
+            exptime = float(self._header.get("EXPTIME", 0.0) or 0.0)
+            if begin is not None:
+                if exptime > 0.0:
+                    # Use TAI for a pure elapsed-time delta; choice doesn’t matter
+                    # as long as begin and end are compared consistently.
+                    end = begin + astropy.time.TimeDelta(exptime, format="sec", scale="tai")
+                else:
+                    end = begin
+        return end
+
 
     @cache_translation
     def to_observation_type(self) -> str:
-        """Return one of: science | flat | bias | dark | focus."""
+        """Return one of: object | flat | bias | dark | focus."""
         obstype = self._header.get("OBSTYPE", "").strip().lower()
-        obj     = self._header.get("OBJECT", "").strip().lower()
+        obj = self._header.get("OBJECT", "").strip().lower()
 
-        # Diagnostics / recovery / tests
-        if "test" in obj or "post" in obj:
-            return "focus"
-
-        # Dark / bias from OBSTYPE
+        # Explicit types
         if obstype == "dark":
             return "bias" if "bias" in obj else "dark"
-
-        # Flats
         if obstype == "flat" or "flat" in obj:
             return "flat"
 
-        # Focus or pointing sequences
+        # Focus/pointing/tests
         if any(w in obj for w in ("focus", "focusing", "point")):
             return "focus"
+        if "test" in obj or "post" in obj:
+            return "focus"
 
-        # Bias frames with OBJECT="Bias"
         if "bias" in obj:
             return "bias"
 
-        # Default
         return "science"
-
 
     @cache_translation
     def to_observation_reason(self) -> str:
-        """Tag the intent behind the observation for filtering."""
         object_str = self._header.get("OBJECT", "").strip().lower()
-
-        if "flat" in object_str:
-            return "calibration"
-        if "bias" in object_str:
-            return "calibration"
-        if "dark" in object_str:
+        if any(w in object_str for w in ("flat", "bias", "dark")):
             return "calibration"
         if "focus" in object_str:
             return "focus"
