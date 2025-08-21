@@ -21,7 +21,9 @@ class TestNickelTranslator(unittest.TestCase):
             "OBSNUM": 1032,
             "TEMPDET": -109.7,
             "AIRMASS": 1.28,
-            "DATE": "2024-06-25T05:17:49.85",
+            # "DATE": "2024-06-25T05:17:49.85",
+            "DATE-BEG": "2024-06-25T06:23:17.94",
+            "DATE-END": "2024-06-25T06:23:27.94",            
             "RA": "11:56:28.09",
             "DEC": "55:07:31.0",
             "RADESYSS": "FK5"
@@ -34,7 +36,7 @@ class TestNickelTranslator(unittest.TestCase):
     def test_datetime_begin(self):
         dt = self.translator.to_datetime_begin()
         self.assertIsInstance(dt, Time)
-        self.assertAlmostEqual(dt.mjd, Time("2024-06-25T05:17:49.85", format="isot", scale="utc").mjd, places=6)
+        self.assertAlmostEqual(dt.mjd, Time("2024-06-25T06:23:17.94", format="isot", scale="utc").mjd, places=6)
 
     def test_temperature(self):
         temp = self.translator.to_temperature()
@@ -59,7 +61,7 @@ class TestNickelTranslator(unittest.TestCase):
         self.assertEqual(self.translator.to_object(), "NGC_3982")
 
     def test_observation_type(self):
-        self.assertEqual(self.translator.to_observation_type(), "object")
+        self.assertEqual(self.translator.to_observation_type(), "science")
 
 
 if __name__ == "__main__":

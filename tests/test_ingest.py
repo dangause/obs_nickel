@@ -27,7 +27,7 @@ class TestNickelIngest(IngestTestBase, lsst.utils.tests.TestCase):
         self.dataIds = [dict(instrument="Nickel", exposure=1032, detector=0)]
         self.visits = None
         self.outputRun = "test_run"
-        self.filterLabel = FilterLabel(band="B", physical="B")
+        self.filterLabel = FilterLabel(band="b", physical="B")
         super().setUp()
 
 

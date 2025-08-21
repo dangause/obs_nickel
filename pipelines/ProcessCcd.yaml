@@ -50,4 +50,4 @@ subsets:
 
 steps:
   - label: processCcd
-    sharding_dimensions: visit,detector
+    dimensions: [instrument, exposure, detector]
