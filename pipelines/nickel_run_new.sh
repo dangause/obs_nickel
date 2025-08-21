@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# bad exposures from your log:
+# bad exposures - exclude:
 BAD="1032,1033,1043,1046,1047,1048,1049,1050,1051,1052,1056"
 
 ########## ABSOLUTE PATHS (edit if needed) ##########
@@ -81,7 +81,7 @@ butler collection-chain "$REPO" "$CALIB_CHAIN" \
   "$CURATED" "$CP_RUN_BIAS" "$CP_RUN_FLAT" Nickel/calib/defects/current \
   --mode redefine
 
-########## REFCATS (run from your refcat repo; original commands) ##########
+########## REFCATS (run from refcat repo; original commands) ##########
 cd "$REFCAT_REPO"
 
 # Gaia DR3
@@ -141,10 +141,10 @@ pipetask run \
   -i "$RUN","$CALIB_CHAIN","refcats" \
   -o "$PROCESS_CCD_RUN" \
   -p "$PIPE#processCcd" \
-  -d "instrument='Nickel' AND exposure.observation_type='science'" \
+   -d "instrument='Nickel' AND exposure.observation_type='science' AND NOT (exposure IN (${BAD}))" \
   --register-dataset-types \
   2>&1 | tee logs/processCcd_$TS.log
-  #  -d "instrument='Nickel' AND exposure.observation_type='science' AND NOT (exposure IN (${BAD}))" \
+  # -d "instrument='Nickel' AND exposure.observation_type='science'" \
 
 echo "=== Done ==="
 echo "Curated:     $CURATED"
