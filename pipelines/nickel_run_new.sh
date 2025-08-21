@@ -54,26 +54,36 @@ pipetask run \
   -d "instrument='Nickel' AND exposure.observation_type='flat'" \
   --register-dataset-types
 
-########## DEFECTS (from flats; module has no detector args) ##########
-DEF_TS="$(date -u +%Y%m%dT%H%M%SZ)"
-DEFECTS_RUN="Nickel/calib/defects/$DEF_TS"
-QA_DIR="$OBS_NICKEL/scripts/defects/qa_$DEF_TS"
+########## DEFECTS (from flats; only this block changed) ##########
+# Proceed only if cpFlat produced 'flat' datasets.
+if butler query-datasets "$REPO" flat --collections "$CP_RUN_FLAT" | grep -q '^flat'; then
+  DEF_TS="$(date -u +%Y%m%dT%H%M%SZ)"
+  DEFECTS_RUN="Nickel/calib/defects/$DEF_TS"
+  QA_DIR="$OBS_NICKEL/scripts/defects/qa_$DEF_TS"
 
-python "$OBS_NICKEL"/scripts/defects/make_defects_from_flats.py \
-  --repo "$REPO" \
-  --collection "$CP_RUN_FLAT" \
-  --register \
-  --ingest \
-  --defects-run "$DEFECTS_RUN" \
-  --plot \
-  --qa-dir "$QA_DIR"
+  echo "[defects] Building from flats in $CP_RUN_FLAT -> $DEFECTS_RUN"
+  python "$OBS_NICKEL"/scripts/defects/make_defects_from_flats.py \
+    --repo "$REPO" \
+    --collection "$CP_RUN_FLAT" \
+    --manual-box 255 0 2 1025 \
+    --manual-box 782 0 3 977 \
+    --manual-box 1000 0 25 1024 \
+    --register \
+    --ingest \
+    --defects-run "$DEFECTS_RUN" \
+    --plot \
+    --qa-dir "$QA_DIR"
 
-# === AUTO-PICK LATEST DEFECTS RUN ===
-DEFECTS_RUN="$(butler query-collections "$REPO" | awk '/^Nickel\/calib\/defects\//{print $1}' | tail -n1)"
-echo "Using latest defects run: $DEFECTS_RUN"
-
-# point current -> latest defects
-butler collection-chain "$REPO" Nickel/calib/defects/current "$DEFECTS_RUN" --mode redefine
+  # Only relink 'current' if the run exists.
+  if butler query-collections "$REPO" | awk '{print $1}' | grep -qx "$DEFECTS_RUN"; then
+    echo "Using defects run: $DEFECTS_RUN"
+    butler collection-chain "$REPO" Nickel/calib/defects/current "$DEFECTS_RUN" --mode redefine
+  else
+    echo "[defects] Expected run $DEFECTS_RUN not found; skipping Nickel/calib/defects/current relink."
+  fi
+else
+  echo "[defects] No 'flat' datasets found in $CP_RUN_FLAT; skipping defects build/ingest."
+fi
 
 ########## UNIFIED CALIB CHAIN ##########
 CALIB_CHAIN="Nickel/calib/current"
@@ -150,6 +160,6 @@ echo "=== Done ==="
 echo "Curated:     $CURATED"
 echo "CP Bias:     $CP_RUN_BIAS"
 echo "CP Flat:     $CP_RUN_FLAT"
-echo "Defects run: $DEFECTS_RUN"
+echo "Defects run: ${DEFECTS_RUN:-<none>}"
 echo "Calib chain: $CALIB_CHAIN"
 echo "Science run: $PROCESS_CCD_RUN"
