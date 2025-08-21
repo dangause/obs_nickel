@@ -12,7 +12,6 @@ tasks:
       doFringe: False
       doSuspect: True
       doWrite: True
-      doTrimToMatchCalib: True
       doVignette: True
       fluxMag0T1:
         B: 2e8
