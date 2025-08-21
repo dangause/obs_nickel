@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # bad exposures - exclude:
-BAD="1032,1033,1043,1046,1047,1048,1049,1050,1051,1052,1056"
+BAD="1032,1033,1034,1043,1046,1047,1048,1049,1050,1051,1052,1056,1059,1060"
 
 ########## ABSOLUTE PATHS (edit if needed) ##########
 REPO="/Users/dangause/Desktop/lick/lsst/data/nickel/062424"
@@ -141,7 +141,7 @@ pipetask run \
   -i "$RUN","$CALIB_CHAIN","refcats" \
   -o "$PROCESS_CCD_RUN" \
   -p "$PIPE#processCcd" \
-   -d "instrument='Nickel' AND exposure.observation_type='science' AND NOT (exposure IN (${BAD}))" \
+  -d "instrument='Nickel' AND exposure.observation_type='science' AND NOT (exposure IN (${BAD}))" \
   --register-dataset-types \
   2>&1 | tee logs/processCcd_$TS.log
   # -d "instrument='Nickel' AND exposure.observation_type='science'" \
