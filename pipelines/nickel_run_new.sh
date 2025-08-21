@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # bad exposures from your log:
-BAD="" #"1056,1047,1043,1052,1032,1033"
+BAD="1032,1033,1043,1046,1047,1048,1049,1050,1051,1052,1056"
 
 ########## ABSOLUTE PATHS (edit if needed) ##########
 REPO="/Users/dangause/Desktop/lick/lsst/data/nickel/062424"
@@ -51,7 +51,6 @@ pipetask run \
   -p "$CP_PIPE_DIR/pipelines/_ingredients/cpFlat.yaml" \
   -c cpFlatIsr:doDark=False \
   -c cpFlatIsr:doOverscan=True \
-  -c cpFlatIsr:doTrimToMatchCalib=True \
   -d "instrument='Nickel' AND exposure.observation_type='flat'" \
   --register-dataset-types
 
