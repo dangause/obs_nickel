@@ -3,14 +3,14 @@ name: Nickel
 # --- Amplifier Template ---
 AMP: &AMP
   perAmpData: true
-  dataExtent: [1025, 1024]            # full raw frame
+  dataExtent: [1056, 1024]                 # full raw frame = signal (1024) + overscan (32)
   readCorner: LL
-  rawBBox: [[0, 0], [1056, 1024]]
-  rawDataBBox: [[0, 0], [1025, 1024]]       # Everything left of overscan is signal
-  rawSerialPrescanBBox: [[0, 0], [0, 0]]     # No prescan
-  rawSerialOverscanBBox: [[1025, 0], [31, 1024]]  # Right-side overscan
-  rawParallelPrescanBBox: [[0, 0], [0, 0]]    # No paralell prescan
-  rawParallelOverscanBBox: [[0, 0], [0, 0]]   # No parallel overscan
+  rawBBox: [[0, 0], [1056, 1024]]          # full raw amp frame
+  rawDataBBox: [[0, 0], [1024, 1024]]      # imaging area ONLY (no overscan)
+  rawSerialPrescanBBox: [[0, 0], [0, 0]]
+  rawSerialOverscanBBox: [[1024, 0], [32, 1024]]   # right-side overscan: 32 cols starting at x=1024
+  rawParallelPrescanBBox: [[0, 0], [0, 0]]
+  rawParallelOverscanBBox: [[0, 0], [0, 0]]
   gain: 1.8
   readNoise: 10.7
   saturation: 65535
@@ -21,11 +21,11 @@ AMP: &AMP
 
 # --- CCD Template ---
 CCD: &CCD
-  detectorType: 0                      # SCIENCE
-  refpos: [528.0, 512.0]               # center of 1056 x 1024
+  detectorType: 0
+  refpos: [512.0, 512.0]                   # center of the 1024×1024 imaging area
   offset: [0.0, 0.0]
-  bbox: [[0, 0], [1025, 1024]]
-  pixelSize: [0.015, 0.015]            # 15 micron pixels
+  bbox: [[0, 0], [1024, 1024]]             # detector imaging bbox (matches rawDataBBox)
+  pixelSize: [0.015, 0.015]
   transformDict:
     nativeSys: 'Pixels'
     transforms: {}
@@ -41,7 +41,7 @@ CCD: &CCD
       flipXY: [false, false]
 
 # --- Global Focal Plane Scale ---
-plateScale: 24.7   # arcsec/mm = 0.37 arcsec/pixel ÷ 0.015 mm
+plateScale: 24.7
 
 # --- Optical Distortion Approximation ---
 transforms:
@@ -58,7 +58,7 @@ CCDs:
     name: CCD0
     serial: Nickel-1
     physicalType: SCIENCE
-    refpos: [528.0, 512.0]
+    refpos: [512.0, 512.0]
     offset: [0.0, 0.0, 0.0]
     amplifiers:
       A00:
